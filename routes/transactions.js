@@ -1,15 +1,10 @@
 const router = require('express').Router();
-const {
-  getTransactions,
-  getTransaction,
-  createTransaction,
-  approveTransaction,
-} = require('../controllers/transactionController');
+const transactionController = require('../controllers/transactionController');
 const { protect } = require('../middleware/auth');
 
-router.get('/', protect, getTransactions);
-router.get('/:id', protect, getTransaction);
-router.post('/', protect, createTransaction);
-router.post('/:id/approve', protect, approveTransaction);
+router.get('/', protect, transactionController.getTransactions);
+router.get('/:id', protect, transactionController.getTransaction);
+router.post('/', protect, transactionController.createTransaction);
+router.post('/:id/approve', protect, transactionController.approveTransaction);
 
 module.exports = router;

@@ -1,14 +1,12 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { pool } = require('../config/db');
 const { asyncHandler } = require('../middleware/error');
-
-// Temporary storage until we connect the database
-const users = [];
 
 // Generate JWT token
 const signToken = (user) =>
   jwt.sign(
-    { id: user.id, username: user.username, role: user.role },
+    { id: user.user_id, username: user.username, role: user.role },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
@@ -22,29 +20,36 @@ const register = asyncHandler(async (req, res) => {
   }
 
   // Check if user already exists
-  const existing = users.find((u) => u.username === username || u.email === email);
-  if (existing) {
+  const [existing] = await pool.query(
+    'SELECT user_id FROM user WHERE username = ? OR email = ?',
+    [username, email]
+  );
+
+  if (existing.length > 0) {
     return res.status(409).json({ message: 'Username or email already in use.' });
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
+  const userRole = role || 'member';
+
+  const [result] = await pool.query(
+    'INSERT INTO user (username, email, password, role) VALUES (?, ?, ?, ?)',
+    [username, email, hashedPassword, userRole]
+  );
 
   const newUser = {
-    id: users.length + 1,
+    user_id: result.insertId,
     username,
     email,
-    password: hashedPassword,
-    role: role || 'member',
+    role: userRole,
   };
-
-  users.push(newUser);
 
   const token = signToken(newUser);
 
   res.status(201).json({
     message: 'Registration successful.',
     token,
-    user: { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role },
+    user: newUser,
   });
 });
 
@@ -56,7 +61,13 @@ const login = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Username and password are required.' });
   }
 
-  const user = users.find((u) => u.username === username);
+  const [rows] = await pool.query(
+    'SELECT * FROM user WHERE username = ?',
+    [username]
+  );
+
+  const user = rows[0];
+
   if (!user) {
     return res.status(401).json({ message: 'Invalid username or password.' });
   }
@@ -71,17 +82,22 @@ const login = asyncHandler(async (req, res) => {
   res.json({
     message: 'Login successful.',
     token,
-    user: { id: user.id, username: user.username, email: user.email, role: user.role },
+    user: { id: user.user_id, username: user.username, email: user.email, role: user.role },
   });
 });
 
 // GET /api/auth/me
 const getMe = asyncHandler(async (req, res) => {
-  const user = users.find((u) => u.id === req.user.id);
-  if (!user) {
+  const [rows] = await pool.query(
+    'SELECT user_id, username, email, role FROM user WHERE user_id = ?',
+    [req.user.id]
+  );
+
+  if (!rows[0]) {
     return res.status(404).json({ message: 'User not found.' });
   }
-  res.json({ id: user.id, username: user.username, email: user.email, role: user.role });
+
+  res.json(rows[0]);
 });
 
 module.exports = { register, login, getMe };

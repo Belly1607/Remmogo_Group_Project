@@ -1,44 +1,53 @@
+const { pool } = require('../config/db');
 const { asyncHandler } = require('../middleware/error');
 
-// Temporary storage until we connect the database
-const transactions = [];
-const members = require('./memberController');
-
-// GET /api/transactions?groupId=1&type=contribution&approved=false
+// GET /api/transactions
 const getTransactions = asyncHandler(async (req, res) => {
   const { groupId, type, approved } = req.query;
-  let result = [...transactions];
+
+  let query = `
+    SELECT t.*, m.member_name
+    FROM contribution t
+    JOIN member m ON m.member_id = t.member_id
+    WHERE 1=1
+  `;
+  const params = [];
 
   if (groupId) {
-    result = result.filter((t) => t.groupId === parseInt(groupId));
-  }
-  if (type) {
-    result = result.filter((t) => t.type === type);
+    query += ' AND m.group_id = ?';
+    params.push(groupId);
   }
   if (approved !== undefined) {
-    result = result.filter((t) => t.approved === (approved === 'true'));
+    query += ' AND t.approved = ?';
+    params.push(approved === 'true' ? 1 : 0);
   }
 
-  res.json(result);
+  query += ' ORDER BY t.created_at DESC';
+
+  const [rows] = await pool.query(query, params);
+  res.json(rows);
 });
 
 // GET /api/transactions/:id
 const getTransaction = asyncHandler(async (req, res) => {
-  const transaction = transactions.find((t) => t.id === parseInt(req.params.id));
+  const [rows] = await pool.query(
+    'SELECT * FROM contribution WHERE contribution_id = ?',
+    [req.params.id]
+  );
 
-  if (!transaction) {
+  if (!rows[0]) {
     return res.status(404).json({ message: 'Transaction not found.' });
   }
 
-  res.json(transaction);
+  res.json(rows[0]);
 });
 
 // POST /api/transactions
 const createTransaction = asyncHandler(async (req, res) => {
-  const { memberId, groupId, type, amount, notes } = req.body;
+  const { member_id, type, amount, contribution_month, notes } = req.body;
 
-  if (!memberId || !groupId || !type || !amount) {
-    return res.status(400).json({ message: 'memberId, groupId, type and amount are required.' });
+  if (!member_id || !type || !amount) {
+    return res.status(400).json({ message: 'member_id, type and amount are required.' });
   }
 
   const validTypes = ['contribution', 'loan-request', 'loan-payment'];
@@ -46,34 +55,35 @@ const createTransaction = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: `Type must be one of: ${validTypes.join(', ')}` });
   }
 
-  // Business rules
   if (type === 'contribution' && Number(amount) !== 1000) {
     return res.status(400).json({ message: 'Monthly contribution must be exactly P1000.' });
   }
 
-  const newTransaction = {
-    id: transactions.length + 1,
-    memberId: parseInt(memberId),
-    groupId: parseInt(groupId),
-    type,
-    amount: Number(amount),
-    approved: false,
-    approvals: [],
-    notes: notes || '',
-    createdAt: new Date().toISOString(),
-  };
-
-  transactions.push(newTransaction);
+  const [result] = await pool.query(
+    'INSERT INTO contribution (member_id, contribution_amount, contribution_month) VALUES (?, ?, ?)',
+    [member_id, amount, contribution_month || null]
+  );
 
   res.status(201).json({
     message: 'Transaction submitted. Awaiting signatory approval.',
-    transaction: newTransaction,
+    transaction: {
+      contribution_id: result.insertId,
+      member_id,
+      contribution_amount: amount,
+      contribution_month,
+      approved: false,
+    },
   });
 });
 
 // POST /api/transactions/:id/approve
 const approveTransaction = asyncHandler(async (req, res) => {
-  const transaction = transactions.find((t) => t.id === parseInt(req.params.id));
+  const [rows] = await pool.query(
+    'SELECT * FROM contribution WHERE contribution_id = ?',
+    [req.params.id]
+  );
+
+  const transaction = rows[0];
 
   if (!transaction) {
     return res.status(404).json({ message: 'Transaction not found.' });
@@ -83,32 +93,18 @@ const approveTransaction = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Transaction already approved.' });
   }
 
-  // Check this signatory hasnt already approved
-  if (transaction.approvals.includes(req.user.username)) {
-    return res.status(400).json({ message: 'You have already approved this transaction.' });
-  }
+  await pool.query(
+    'UPDATE contribution SET approved = 1 WHERE contribution_id = ?',
+    [req.params.id]
+  );
 
-  // Record this signatories approval
-  transaction.approvals.push(req.user.username);
+  // Update member total contributions
+  await pool.query(
+    'UPDATE member SET total_contributions = total_contributions + ? WHERE member_id = ?',
+    [transaction.contribution_amount, transaction.member_id]
+  );
 
-  // Need 2 approvals before marking as fully approved
-  if (transaction.approvals.length >= 2) {
-    transaction.approved = true;
-    transaction.approvedAt = new Date().toISOString();
-    transaction.approvedBy = req.user.username;
-
-    return res.json({
-      message: 'Transaction fully approved!',
-      approvals: transaction.approvals.length,
-      transaction,
-    });
-  }
-
-  res.json({
-    message: `Approval recorded (${transaction.approvals.length}/2). Awaiting second signatory.`,
-    approvals: transaction.approvals.length,
-    transaction,
-  });
+  res.json({ message: 'Transaction approved successfully.' });
 });
 
 module.exports = { getTransactions, getTransaction, createTransaction, approveTransaction };

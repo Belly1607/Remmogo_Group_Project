@@ -1,64 +1,77 @@
+const { pool } = require('../config/db');
 const { asyncHandler } = require('../middleware/error');
-
-// Temporary storage until we connect the database
-const members = [];
 
 // GET /api/members?groupId=1
 const getMembers = asyncHandler(async (req, res) => {
   const { groupId } = req.query;
 
   if (groupId) {
-    const filtered = members.filter((m) => m.groupId === parseInt(groupId));
-    return res.json(filtered);
+    const [rows] = await pool.query(
+      'SELECT * FROM member WHERE group_id = ?',
+      [groupId]
+    );
+    return res.json(rows);
   }
 
-  res.json(members);
+  const [rows] = await pool.query('SELECT * FROM member ORDER BY date_joined DESC');
+  res.json(rows);
 });
 
 // GET /api/members/:id
 const getMember = asyncHandler(async (req, res) => {
-  const member = members.find((m) => m.id === parseInt(req.params.id));
+  const [rows] = await pool.query(
+    'SELECT * FROM member WHERE member_id = ?',
+    [req.params.id]
+  );
 
-  if (!member) {
+  if (!rows[0]) {
     return res.status(404).json({ message: 'Member not found.' });
   }
 
-  res.json(member);
+  res.json(rows[0]);
 });
 
 // POST /api/members
 const enrollMember = asyncHandler(async (req, res) => {
-  const { fullName, phone, groupId } = req.body;
+  const { member_name, phone, group_id } = req.body;
 
-  if (!fullName || !groupId) {
-    return res.status(400).json({ message: 'Full name and group ID are required.' });
+  if (!member_name || !group_id) {
+    return res.status(400).json({ message: 'Member name and group ID are required.' });
   }
 
-  // Check member not already enrolled in this group
-  const existing = members.find(
-    (m) => m.fullName.toLowerCase() === fullName.toLowerCase() && m.groupId === parseInt(groupId)
+  // Check group exists
+  const [groupCheck] = await pool.query(
+    'SELECT group_id FROM motshelo_group WHERE group_id = ?',
+    [group_id]
   );
 
-  if (existing) {
+  if (!groupCheck[0]) {
+    return res.status(404).json({ message: 'Group not found.' });
+  }
+
+  // Check not already enrolled
+  const [existing] = await pool.query(
+    'SELECT member_id FROM member WHERE member_name = ? AND group_id = ?',
+    [member_name, group_id]
+  );
+
+  if (existing[0]) {
     return res.status(409).json({ message: 'This member is already enrolled in this group.' });
   }
 
-  const newMember = {
-    id: members.length + 1,
-    fullName,
-    phone: phone || '',
-    groupId: parseInt(groupId),
-    totalContributions: 0,
-    loanBalance: 0,
-    interestRaised: 0,
-    enrolledAt: new Date().toISOString(),
-  };
-
-  members.push(newMember);
+  const [result] = await pool.query(
+    'INSERT INTO member (member_name, phone, group_id) VALUES (?, ?, ?)',
+    [member_name, phone || null, group_id]
+  );
 
   res.status(201).json({
     message: 'Member enrolled successfully.',
-    member: newMember,
+    member: {
+      member_id: result.insertId,
+      member_name,
+      phone,
+      group_id,
+    },
   });
 });
 
