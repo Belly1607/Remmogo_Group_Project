@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import API from '../api'
 
 export default function GroupRegistration({ onCreateGroup }) {
   const [name, setName] = useState('')
@@ -7,8 +8,9 @@ export default function GroupRegistration({ onCreateGroup }) {
   const [signatoryTwo, setSignatoryTwo] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
     setSuccess('')
@@ -23,20 +25,27 @@ export default function GroupRegistration({ onCreateGroup }) {
       return
     }
 
-    const group = {
-      id: `group-${Date.now()}`,
-      name: name.trim(),
-      description: description.trim(),
-      signatories: [signatoryOne.trim(), signatoryTwo.trim()],
-      createdAt: new Date().toISOString(),
-    }
+    setLoading(true)
 
-    onCreateGroup(group)
-    setSuccess('Group registered successfully.')
-    setName('')
-    setDescription('')
-    setSignatoryOne('')
-    setSignatoryTwo('')
+    try {
+      const response = await API.post('/groups', {
+        group_name: name.trim(),
+        description: description.trim(),
+        signatoryOne: signatoryOne.trim(),
+        signatoryTwo: signatoryTwo.trim(),
+      })
+
+      onCreateGroup(response.data.group)
+      setSuccess('Group registered successfully.')
+      setName('')
+      setDescription('')
+      setSignatoryOne('')
+      setSignatoryTwo('')
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to register group. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -44,7 +53,9 @@ export default function GroupRegistration({ onCreateGroup }) {
       <section>
         <p className="eyebrow">Register a new group</p>
         <h2>Create a motshelo group</h2>
-
+        <p className="intro-text">
+          Each motshelo group must have two signatories. The app will use this group to enroll members and track contributions.
+        </p>
       </section>
 
       <form className="form-grid" onSubmit={handleSubmit} noValidate>
@@ -87,14 +98,13 @@ export default function GroupRegistration({ onCreateGroup }) {
             placeholder="Second approver"
             required
           />
-
         </label>
 
         {error && <p className="form-error">{error}</p>}
         {success && <p className="form-success">{success}</p>}
 
-        <button type="submit" className="button-primary">
-          Register group
+        <button type="submit" className="button-primary" disabled={loading}>
+          {loading ? 'Registering...' : 'Register group'}
         </button>
       </form>
     </main>
