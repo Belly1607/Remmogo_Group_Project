@@ -26,6 +26,16 @@ cd re-mmogo
 cd backend - # to be in the folder of backend
 npm install - # to install of dependencies
 create a .env (environment variables) file in the backend folder
+.env
+PORT=5000
+JWT_SECRET=remmogo_super_secret_key_2024
+JWT_EXPIRES_IN=7d
+CLIENT_URL=http://localhost:5173/
+NODE_ENV=development
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=root1234
+DB_NAME=remmogo_db
 ```
 Run the server 
 ```bash
@@ -44,6 +54,12 @@ npm run dev # to run in web browser
  Run the SQL scripts in `/database/schema.sql` against your SQL Server instance to create all tables and relationships.
 
  ## Live URL
+
+ ```bash
+
+ https://frontend-nine-pink-49.vercel.app/login # for Frontend
+ https://remmogo-group-project.onrender.com/    # for Backend
+ ```
 
  ## Github Repository
 ```bash
