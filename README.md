@@ -73,5 +73,17 @@ Mutsawashe Maraidza 24020134
 Laone Mashabane 24019382
 Esabel Mutisi 24020114
 
+## Recent Updates & After Presentation
+
+### Security Fix — Role Based Access Control (RBAC)
+- Identified a vulnerability where any logged in user could approve transactions
+- Fixed by adding role checks to the approval endpoint
+- Only users with **signatory** or **admin** role can now approve transactions
+- Group creator is automatically assigned the **admin** role on group creation
+- Named signatories are automatically assigned the **signatory** role
+
+### ERD Fix
+- Corrected relationship errors in the Entity Relationship Diagram
+- Updated to accurately reflect the database table relationships
 
 
