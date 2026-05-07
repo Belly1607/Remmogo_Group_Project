@@ -49,15 +49,51 @@ const createGroup = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Both signatories must be different people.' });
   }
 
+  // Check both signatories exist as users
+  const [sigOneCheck] = await pool.query(
+    'SELECT user_id FROM user WHERE username = ?',
+    [signatoryOne]
+  );
+  const [sigTwoCheck] = await pool.query(
+    'SELECT user_id FROM user WHERE username = ?',
+    [signatoryTwo]
+  );
+
+  if (!sigOneCheck[0]) {
+    return res.status(404).json({ message: `User "${signatoryOne}" not found.` });
+  }
+  if (!sigTwoCheck[0]) {
+    return res.status(404).json({ message: `User "${signatoryTwo}" not found.` });
+  }
+
+  // Create the group
   const [result] = await pool.query(
     'INSERT INTO motshelo_group (group_name, description) VALUES (?, ?)',
     [group_name, description || '']
   );
 
+  const groupId = result.insertId;
+
+  // Make the group creator an admin
+  await pool.query(
+    'UPDATE user SET role = ? WHERE user_id = ?',
+    ['admin', req.user.id]
+  );
+
+  // Assign signatory role to both signatories
+  await pool.query(
+    'UPDATE user SET role = ? WHERE username = ?',
+    ['signatory', signatoryOne]
+  );
+  await pool.query(
+    'UPDATE user SET role = ? WHERE username = ?',
+    ['signatory', signatoryTwo]
+  );
+
   res.status(201).json({
     message: 'Group registered successfully.',
     group: {
-      group_id: result.insertId,
+      group_id: groupId,
       group_name,
       description,
       signatories: [signatoryOne, signatoryTwo],

@@ -78,6 +78,13 @@ const createTransaction = asyncHandler(async (req, res) => {
 
 // POST /api/transactions/:id/approve
 const approveTransaction = asyncHandler(async (req, res) => {
+  // ✅ Role check — only signatories or admins can approve
+  if (req.user.role !== 'signatory' && req.user.role !== 'admin') {
+    return res.status(403).json({
+      message: 'Only signatories or admins can approve transactions.',
+    });
+  }
+
   const [rows] = await pool.query(
     'SELECT * FROM contribution WHERE contribution_id = ?',
     [req.params.id]
